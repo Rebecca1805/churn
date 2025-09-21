@@ -41,7 +41,7 @@ preprocessor = ColumnTransformer(
 # === Carregar e preparar dataset ===
 @st.cache_resource
 def carregar_dados():
-    df = pd.read_csv("data/Previsao_Churn.csv")
+    df = pd.read_csv("Data/Previsao_Churn.csv")
 
     # Renomear colunas
     df.rename(columns={
@@ -153,3 +153,4 @@ st.pyplot(fig)
 # === Dados detalhados ===
 st.subheader("📋 Dados Detalhados")
 st.dataframe(df_filtrado.head(50))
+
