@@ -39,7 +39,6 @@ preprocessor = ColumnTransformer(
 )
 
 # === Carregar e preparar dataset ===
-# === Carregar e preparar dataset ===
 @st.cache_resource
 def carregar_dados():
     df = pd.read_csv("Data/Previsao_Churn.csv")
@@ -163,17 +162,5 @@ else:
                c=df_plot["Pred_Churn"], cmap="coolwarm", alpha=0.6)
     ax.set_xlabel("Dias sem Compra")
     ax.set_ylabel("Nível de Satisfação (1=Insat., 2=Neutro, 3=Satisfeito)")
-    st.pyplot(fig)
-
-# Remover linhas sem dados válidos
-df_plot = df_filtrado.dropna(subset=["Dias_Sem_Compra", "Nivel_Satisfacao_Num"])
-
-if df_plot.empty:
-    st.warning("⚠️ Nenhum dado disponível para plotar com os filtros selecionados.")
-else:
-    ax.scatter(df_plot["Dias_Sem_Compra"], df_plot["Nivel_Satisfacao_Num"],
-               c=df_plot["Pred_Churn"], cmap="coolwarm", alpha=0.6)
-    ax.set_xlabel("Dias sem Compra")
-    ax.set_ylabel("Nível de Satisfação (1=Baixo, 2=Médio, 3=Alto)")
     st.pyplot(fig)
 
