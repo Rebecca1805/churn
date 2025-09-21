@@ -1,10 +1,12 @@
-# === Imports iniciais ===
+# === Imports ===
 import warnings
 warnings.filterwarnings("ignore")
 
 import pandas as pd
 import numpy as np
 import random
+import streamlit as st
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -12,8 +14,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
-
-import streamlit as st
 
 # Reprodutibilidade
 RANDOM_STATE = 23
@@ -38,10 +38,10 @@ preprocessor = ColumnTransformer(
     ]
 )
 
-# === Treinamento do modelo (com dataset base) ===
+# === Carregar e preparar dataset ===
 @st.cache_resource
-def treinar_modelo():
-    df = pd.read_csv("Data/Previsao_Churn.csv")
+def carregar_dados():
+    df = pd.read_csv("data/Previsao_Churn.csv")
 
     # Renomear colunas
     df.rename(columns={
@@ -58,9 +58,13 @@ def treinar_modelo():
         "Satisfaction Level": "Nivel_Satisfacao"
     }, inplace=True)
 
-    # Criar variável alvo
+    # Criar variável alvo (churn real)
     df["Churn"] = (df["Dias_Sem_Compra"] > 30).astype(int)
+    return df
 
+# === Treinar modelo ===
+@st.cache_resource
+def treinar_modelo(df):
     X = df.drop(columns=["Churn"])
     y = df["Churn"]
 
@@ -74,110 +78,78 @@ def treinar_modelo():
     ])
 
     rf_model.fit(X_train, y_train)
-
     return rf_model
 
-rf_model = treinar_modelo()
-
-# === Interface Streamlit ===
+# === App ===
 st.set_page_config(page_title="Previsão de Churn", layout="wide")
-st.title("📊 Previsão de Churn em E-commerce")
-st.write("Faça upload de um CSV de clientes para prever risco de churn.")
+st.title("📊 Dashboard de Churn em E-commerce")
 
-st.markdown("""
-**📌 Instruções para o upload:**
-- O arquivo CSV deve conter as seguintes colunas:
-  - `ID_Cliente`
-  - `Genero`
-  - `Idade`
-  - `Cidade`
-  - `Tipo_Assinatura`
-  - `Gasto_Total`
-  - `Itens_Comprados`
-  - `Nota_Media`
-  - `Desconto_Aplicado`
-  - `Dias_Sem_Compra`
-  - `Nivel_Satisfacao`
-- O app usará essas colunas para prever o risco de churn.
-""")
+df = carregar_dados()
+rf_model = treinar_modelo(df)
 
-colunas_obrigatorias = [
-    "ID_Cliente", "Genero", "Idade", "Cidade", "Tipo_Assinatura",
-    "Gasto_Total", "Itens_Comprados", "Nota_Media",
-    "Desconto_Aplicado", "Dias_Sem_Compra", "Nivel_Satisfacao"
-]
+# Adicionar previsões ao dataset
+df["Pred_Churn"] = rf_model.predict(df.drop(columns=["Churn"]))
+df["Prob_Churn"] = rf_model.predict_proba(df.drop(columns=["Churn"]))[:, 1]
 
-uploaded_file = st.file_uploader("Carregue o arquivo CSV", type=["csv"])
+# === Sidebar com filtros ===
+st.sidebar.header("🔍 Filtros")
+filtros = {}
 
-if uploaded_file is not None:
-    df_input = pd.read_csv(uploaded_file)
+for col in ["Genero", "Cidade", "Tipo_Assinatura", "Desconto_Aplicado", "Nivel_Satisfacao"]:
+    opcoes = ["Todos"] + sorted(df[col].dropna().unique().tolist())
+    escolha = st.sidebar.selectbox(f"{col}", opcoes)
+    if escolha != "Todos":
+        filtros[col] = escolha
 
-    # Padronizar nomes de colunas
-    df_input.rename(columns={
-        "Customer ID": "ID_Cliente",
-        "Gender": "Genero",
-        "Age": "Idade",
-        "City": "Cidade",
-        "Membership Type": "Tipo_Assinatura",
-        "Total Spend": "Gasto_Total",
-        "Items Purchased": "Itens_Comprados",
-        "Average Rating": "Nota_Media",
-        "Discount Applied": "Desconto_Aplicado",
-        "Days Since Last Purchase": "Dias_Sem_Compra",
-        "Satisfaction Level": "Nivel_Satisfacao"
-    }, inplace=True)
+# Aplicar filtros
+df_filtrado = df.copy()
+for col, val in filtros.items():
+    df_filtrado = df_filtrado[df_filtrado[col] == val]
 
-    # Verificar colunas obrigatórias
-    faltando = [c for c in colunas_obrigatorias if c not in df_input.columns]
-    if faltando:
-        st.error(f"O arquivo está faltando as colunas: {faltando}")
-    else:
-        # Só exibe a tabela, sem texto adicional
-        st.dataframe(df_input.head())
+# === Métricas gerais ===
+st.subheader("📈 Métricas Gerais (após filtros)")
+total = len(df_filtrado)
+pred_real = df_filtrado["Churn"].sum()
+pred_real_pct = (pred_real / total * 100) if total > 0 else 0
 
-        # Predições
-        preds = rf_model.predict(df_input)
-        probs = rf_model.predict_proba(df_input)[:, 1]
+pred_prev = df_filtrado["Pred_Churn"].sum()
+pred_prev_pct = (pred_prev / total * 100) if total > 0 else 0
 
-        df_input["Pred_Churn"] = preds
-        df_input["Prob_Churn"] = probs
+prob_media = df_filtrado["Prob_Churn"].mean() if total > 0 else 0
 
-        st.subheader("🔮 Resultados das Predições")
-        st.dataframe(df_input[["ID_Cliente", "Pred_Churn", "Prob_Churn"]].head(20))
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Analisado", total)
+col2.metric("Predição (Churn Real)", f"{pred_real} clientes", f"{pred_real_pct:.1f}%")
+col3.metric("Previsão (Modelo)", f"{pred_prev} clientes", f"{pred_prev_pct:.1f}%")
+col4.metric("Prob. Média de Churn", f"{prob_media*100:.1f}%")
 
-        churn_rate = df_input["Pred_Churn"].mean() * 100
-        st.metric("Taxa de Churn Prevista", f"{churn_rate:.2f}%")
+# === Gráficos ===
+st.subheader("📊 Análises Gráficas")
 
-        # Importância das variáveis
-        importancias = rf_model.named_steps["classifier"].feature_importances_
-        feature_names_num = colunas_numericas
-        feature_names_cat = rf_model.named_steps["preprocessor"].transformers_[1][1]\
-            .named_steps["onehot"].get_feature_names_out(colunas_categoricas)
-        feature_names = list(feature_names_num) + list(feature_names_cat)
+# Importância das variáveis
+importancias = rf_model.named_steps["classifier"].feature_importances_
+feature_names_num = colunas_numericas
+feature_names_cat = rf_model.named_steps["preprocessor"].transformers_[1][1]\
+    .named_steps["onehot"].get_feature_names_out(colunas_categoricas)
+feature_names = list(feature_names_num) + list(feature_names_cat)
 
-        importancias_df = pd.DataFrame({
-            "Variavel": feature_names,
-            "Importancia": importancias
-        }).sort_values(by="Importancia", ascending=False).head(10)
+importancias_df = pd.DataFrame({
+    "Variavel": feature_names,
+    "Importancia": importancias
+}).sort_values(by="Importancia", ascending=False).head(10)
 
-        st.markdown("""
-### 📝 Como interpretar os resultados
+st.write("### 🔑 Top 10 Variáveis Mais Importantes")
+st.bar_chart(importancias_df.set_index("Variavel"))
 
-- **Pred_Churn (0/1):**
-  - `1` = Cliente em risco de churn (alta chance de parar de comprar).
-  - `0` = Cliente ativo (baixa chance de churn).
+# Dispersão
+st.write("### 🌐 Dispersão: Dias sem Compra x Nível de Satisfação")
+fig, ax = plt.subplots()
+ax.scatter(df_filtrado["Dias_Sem_Compra"], df_filtrado["Nivel_Satisfacao"],
+           c=df_filtrado["Pred_Churn"], cmap="coolwarm", alpha=0.6)
+ax.set_xlabel("Dias sem Compra")
+ax.set_ylabel("Nível de Satisfação")
+st.pyplot(fig)
 
-- **Prob_Churn:** Probabilidade calculada pelo modelo para cada cliente.
-  - Exemplo: `0.82` significa 82% de risco de churn.
-
-- **Taxa de Churn Prevista:** Percentual médio de clientes em risco.
-  - Exemplo: se for 22%, quer dizer que 22 a cada 100 clientes estão em risco.
-
-- **Variáveis Mais Importantes:** Mostra os fatores que mais pesaram no modelo.
-  - Exemplo: clientes com mais dias sem compra e baixa satisfação tendem a churnar primeiro.
-""")
-
-        st.write("### 🔑 Top Variáveis Mais Importantes")
-        st.bar_chart(importancias_df.set_index("Variavel"))
-
-
+# === Dados detalhados ===
+st.subheader("📋 Dados Detalhados")
+st.dataframe(df_filtrado.head(50))
