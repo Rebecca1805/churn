@@ -144,13 +144,16 @@ st.bar_chart(importancias_df.set_index("Variavel"))
 # Dispersão
 st.write("### 🌐 Dispersão: Dias sem Compra x Nível de Satisfação")
 fig, ax = plt.subplots()
-ax.scatter(df_filtrado["Dias_Sem_Compra"], df_filtrado["Nivel_Satisfacao"],
+
+# Mapeamento do nível de satisfação (caso venha categórico)
+mapa_satisfacao = {"Baixo": 1, "Médio": 2, "Alto": 3,
+                   "Low": 1, "Medium": 2, "High": 3}
+df_filtrado["Nivel_Satisfacao_Num"] = df_filtrado["Nivel_Satisfacao"].map(mapa_satisfacao)
+
+# Scatter usando a coluna numérica
+ax.scatter(df_filtrado["Dias_Sem_Compra"], df_filtrado["Nivel_Satisfacao_Num"],
            c=df_filtrado["Pred_Churn"], cmap="coolwarm", alpha=0.6)
+
 ax.set_xlabel("Dias sem Compra")
-ax.set_ylabel("Nível de Satisfação")
+ax.set_ylabel("Nível de Satisfação (1=Baixo, 2=Médio, 3=Alto)")
 st.pyplot(fig)
-
-# === Dados detalhados ===
-st.subheader("📋 Dados Detalhados")
-st.dataframe(df_filtrado.head(50))
-
